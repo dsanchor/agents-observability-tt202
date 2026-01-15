@@ -1,0 +1,27 @@
+{
+    "name": "Python Development Container",
+    "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+            "version": "latest",
+            "enableNonRootDocker": "true",
+            "moby": "true"
+        },
+        "ghcr.io/devcontainers/features/azure-cli:1": {
+            "version": "latest"
+        }
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "GitHub.copilot",
+                "GitHub.copilot-chat",
+                "ms-windows-ai-studio.windows-ai-studio",
+                "ms-vscode.azurecli",
+                "teamsdevapp.vscode-ai-foundry"
+            ]
+        }
+    },
+    "postCreateCommand": "python --version && docker --version && az --version",
+    "remoteUser": "vscode"
+}
