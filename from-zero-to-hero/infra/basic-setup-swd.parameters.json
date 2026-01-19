@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      // swedencentral si no quiero hosted agents.
+      "value": "swedencentral" 
+    },
+    "aiServicesName": {
+      "value": "tc2026ais"
+    },
+    "projectName": {
+      "value": "techconnect2026swd"
+    },
+    "modelName": {
+      "value": "gpt-4.1"
+    },
+    "modelFormat": {
+      "value": "OpenAI"
+    },
+    "modelVersion": {
+      "value": "2025-04-14"
+    },
+    "modelSkuName": {
+      "value": "GlobalStandard"
+    },
+    "modelCapacity": {
+      "value": 100
+    }
+  }
+}

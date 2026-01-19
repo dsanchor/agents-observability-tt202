@@ -1,179 +1,79 @@
-# Tech Connect 2026  - Agents Obervability Workshop
+# TechTalk: E2E Observability on Multi-Agent Systems using the Microsoft Agent Framework & OTEL
 
-## Create agents in Foundry
+## 🎯 Session Goals
 
-### Requirements
+- Master MAF to build and publish Agents v2 on Foundry.
+- Learn multi-agent orchestration and observability with OpenTelemetry.
+- Apply production-ready observability for developers and BDMs using dashboards, KPIs, and fraud detection.
 
-#### Login to Azure
+## 📋 Session Abstract
 
-```bash
-az login
-```
+This session explores advanced multi-agent development and observability using Microsoft Foundry and the Microsoft Agent Framework (MAF). Attendees will gain practical insights into building and orchestrating agents, applying observability frameworks, and leveraging real-world scenarios to deliver actionable metrics for developers and business decision-makers. 
+This session also sharers the current model we are using to skill our customers on these topics.
 
-#### Environment setup
+## 🎯 Key Audience Takeaways
 
-```bash
-export RG=<your-resource-group>
-export LOCATION=<your-location> # one that supports hosted agents, e.g., northcentralus
-```
+- Accelerate your learning curve on the newest Microsoft Agent Framework and Microsoft Foundry Agents v2
+- Visualize enterprise tracing in Application Insights with built-in and custom metrics
+- Create real-time dashboards for enterprise monitoring
 
-#### Install resources
+## 🎬 Repository Flow
 
-```bash
-az group create --name $RG --location $LOCATION
-# deployment with file parameters
-az deployment group create --resource-group $RG --template-file infra/basic-setup.bicep --parameters @infra/basic-setup.parameters.json
-```
+### From Zero to Hero – Observability for Multi-Agent Development
 
-Update env variables with outputs from deployment
+👉 **[Detailed Guide: From Zero to Hero →](./from-zero-to-hero/README.md)**
 
-```bash
-export FOUNDRY_RESOURCE_NAME=<your-foundry-resource-name>
-export FOUNDRY_PROJECT_NAME=<your-foundry-project-name>
-export AZURE_AI_PROJECT_ENDPOINT="https://$FOUNDRY_RESOURCE_NAME.services.ai.azure.com/api/projects/$FOUNDRY_PROJECT_NAME"
-export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4.1"  # or your deployment name
-```
+**Building Foundry Agents with Microsoft Agent Framework**
 
-From portal:
+Using latest MAF to build and publish new Agents v2 on Microsoft Foundry.
 
-- Create a `Grounding with bing` resource and connect to the Microsoft Foundry project (https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/tools/bing-tools?view=foundry&tabs=grounding-with-bing&pivots=python#prerequisites)
+**Multi-Agent orchestration and local playground**
 
-![alt text](images/bingconnectofoundry.png)
+Orchestrate you agents and test them using Local Playground from the Microsoft Foundry VS Code extension.
 
+**Hosted agents and observability on Multi-Agent Systems with OpenTelemetry**
 
-### Install the Agent Framework package
+Learn how to deploy local multi-agent orchestration to become a hosted agent in Microsoft Foundry. Enable built-in observability through OpenTelemetry.
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install agent-framework --pre
-pip list
-```
+### Production-Ready Observability of your System for Developers and BDMs
 
-### Create an agent
+👉 **[Detailed Guide: Production-Ready Observability →](./production-ready-observability/README.md)**
 
-```bash
-python agents-standalone/create_research_agent.py
-python agents-standalone/create_writer_agent.py
-python agents-standalone/create_reviewer_agent.py
-```
+**Observability Framework applied to Fraud Detection**
 
-### Publish the agent
+Understanding the spans and custom metrics creation and applying the 3-tier tracking framework (application, workflow, executor).  
+Creation of the monitoring system with custom metrics adapted to our UC.
 
-Use publish in Foundry portal. 
+**Observability for Developers**
 
-You get a set of endpoints for the Researcher agent (responses api and activity protocol):
+Leveraging Azure Application Insights to understand the default and custom metrics using the Agents Pane, Dashboards with Grafana and Custom Workbook.
 
-### Test the agent
+**Observability for BDMs**
 
-Use the responses endpoint to test the agent:
+How are the agent metrics being propagated through our customers' organization? We will learn how to ship real-time KPIs to BDMs either using App Insights or using PowerBI's DirectQuery.
 
-```bash
-export AGENT_NAME=ResearcherAgent
-python agents-client/agent_client.py "What are the latest AI trends?"
-```
+### Additional resources
 
-## Create workflow
+Learn how we are skilling-up our customers with these additional resources from hackathons and workshops:
 
-Test the sequential agents workflow
+- 👉 **[Claims Processing with Microsoft Foundry Agents Hackathon](https://github.com/microsoft/claims-processing-hack)**
+- 👉 **[Intelligent Predictive Maintenance Hackathon](https://github.com/microsoft/agentic-factory-hack)**
+- 👉 **[Automated Regulatory Compliance & Audit​ Hackathon](https://github.com/microsoft/azure-trust-agents)**
 
-```bash
-python orchestration/sequential_agents.py
-```
 
-## Deploy as hosted agent
+## 🚀 Getting Started
 
-First, install required packages
+1. **Prerequisites:**
+   - Azure subscription
+   - IDEs: there is a `devcontainer` available for this repo. You can either use:
+     - GitHub Codespaces
+     - VS Code with Dev Containers extension
+   - Python 3.12+
 
-```bash
-pip install azure-ai-agentserver-agentframework
-```
+2. **Choose Your Path:**
+   - **Building Agents?** → Start with [From Zero to Hero](./from-zero-to-hero/README.md)
+   - **Implementing Observability?** → Go to [Production-Ready Observability](./production-ready-observability/README.md)
 
-Run locally:
+## 📧 Contact & Support
 
-```bash
-python orchestration/hosted/sequential_agents_as_agent.py
-```
-
-Test it using the Local Agent Playground from the Microsoft Foundry extension. Notice no traces yet.
-
-
-Alternative, test it:
-
-```bash
-curl -X POST http://localhost:8088/responses \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": "Report about the latest AI trends."
-}'
-```
-
-Use the Microsoft Foundry extension to deploy a hosted agent. Either in the same playground or as below:
-
-  Under TOOLS -> 
-      Deploy Hosted Agents then select the orchestration/hosted/sequential_agents_as_agent.py (researchwf) file and sizing. Then the same for the group_chat_agent_manager_as_agent.py file (researchgrchatwf).
-
-### Give permission to the Foundry Managed Identity
-
-Use the portal to give "Azure AI User" role to the Foundry Project Managed Identity.
-
-### Publish and test
-
-Publish the hosted agents in Foundry portal.
-
-Test the Group Chat hosted agent:
-
-```bash
-export AGENT_NAME=researchgrchatwf
-python agents-client/agent_client.py "Write a short article about the latest AI trends."
-```
-
-## Observability
-
-### Configure Application Insights
-
-Setup an Application Insights resource connected to the Foundry project.
-
-Make it in the Foundry portal: Operate/Admin/<choose project>/Connected Resources/Application Insights
-
-Run some tests:
-
-```bash
-export AGENT_NAME=researchgrchatwf
-python agents-client/agent_client.py "What are the latest AI trends?"
-```
-
-REVIEW THIS: 
-
-See that data is flowing into Application Insights without any code changes. 
-See Traces & Monitor in Foundry portal.
-See Application Insights in Azure portal/Agents. (Note: I only see traces in "search". Tables are empty, only  dependency table has some data).
-
-### Add observability using AI Toolkit
-
-Use Ai Toolkit to generate tracing configuration over a copy of the orchestration/hosted/group_chat_agent_manager_as_agent.py file (see result in orchestration/tracing/group_chat_agent_manager_as_agent.py).
-
-IMPORTANT: start the Local Agent Playground in the Microsoft Foundry extension first.
-
-Then change port 4319 and execute:
-
-```bash
-python orchestration/tracing/group_chat_agent_manager_as_agent.py
-```
-
-Test it using the Local Agent Playground from the Microsoft Foundry extension:
-
-![alt text](images/localtraces.png)
-
-### Deploy new version of the traced hosted agent
-
-Use the Microsoft Foundry extension to deploy the traced version of the group chat hosted agent (orchestration/tracing/group_chat_agent_manager_as_agent.py).
-
-Then, pubslish and test again:
-
-```bash
-export AGENT_NAME=researchgrchatwf
-python agents-client/agent_client.py "Write a short article about the latest AI trends."
-```
-
-
+For questions or feedback, feel free to open an issue or reach out to the maintainers.
