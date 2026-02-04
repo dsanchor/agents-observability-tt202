@@ -177,6 +177,16 @@ Test it using the Local Agent Playground from the Microsoft Foundry extension an
 
 TODO : add image
 
+Alternative, you can test it using curl:
+
+```bash
+curl -X POST http://localhost:8088/responses \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "Report about the latest AI trends."
+}'
+```
+
 
 ## Deploy as hosted agent
 
@@ -187,41 +197,46 @@ In order to deploy the workflow as a hosted agent in Foundry, we will need to cr
 - the agent code: `orchestration/hosted/groupchat/group_chat_agent_manager_as_agent.py`
 - a `requirements.txt` file with the dependencies
 - a `Dockerfile` to build the container image
-- a .env file with environment variables that are then injected into the container. The minimum required variables are:
+- a .env file with environment variables that are then injected into the container. For this demo, the required variables are:
     ```
     AZURE_AI_PROJECT_ENDPOINT=
     AZURE_AI_MODEL_DEPLOYMENT_NAME=
     ```
 
+Also, we need to create a `.foundry/.deployment.json` file to define the hosted agent deployment options. The Microsoft Foundry extension will look for this file to know how to build and deploy the hosted agent. The content of the file would be generated for you if you use the extension to deploy, but there is a limitation that it doesn't generate the correct dockerContextPath if your Dockerfile is not in the root of the project, so make sure to update those paths to point to the `orchestration/hosted/groupchat` folder:
 
-
-Test it using the Local Agent Playground from the Microsoft Foundry extension. Notice no traces yet.
-
-
-Alternative, test it:
-
-```bash
-curl -X POST http://localhost:8088/responses \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": "Report about the latest AI trends."
-}'
+```json
+{
+  "hostedAgentDeployOptions": {
+    "dockerContextPath": "/workspaces/agents-observability-tt202/from-zero-to-hero/orchestration/hosted/groupchat",
+    "dockerfilePath": "/workspaces/agents-observability-tt202/from-zero-to-hero/orchestration/hosted/groupchat/Dockerfile",
+    "agentName": "groupchatwriter",
+    "cpu": "1.0",
+    "memory": "2.0Gi"
+  }
+}
 ```
 
-Use the Microsoft Foundry extension to deploy a hosted agent. 
+You can try without this file and you will be asked to fill in the deployment options in the Microsoft Foundry extension UI when you click on Deploy, but the final deployment will fail as the context is just the root of the project and not the folder where the Dockerfile is.
 
-### Give permission to the Foundry Managed Identity
+To avoid this, you can copy the content from `orchestration/hosted/groupchat/.foundry/.deployment.json` to the root `.foundry/.deployment.json` before deploying, or just update the paths in the existing root `.foundry/.deployment.json` to point to the correct Dockerfile and context.
 
-Use the portal to give "Azure AI User" role to the Foundry Project Managed Identity.
+### Deploy
+
+In the Local Agent Playground from the Microsoft Foundry extension, click on `Deploy` and select the folder `orchestration/hosted/groupchat`. This will build the container image and deploy it as a hosted agent in Foundry:
+
+TODO : add image
+
+It takes a few minutes to build and deploy the agent. Once it's deployed, you can see it in the Foundry portal under Agents.
+
+**Important:** Before testing, we need to give permission to the Foundry Project Managed Identity. Use the portal to give "Azure AI User" role over the Foundry project.
 
 ### Publish and test
 
-Publish the hosted agents in Foundry portal.
-
-Test the Group Chat hosted agent:
+Publish the hosted agents in Foundry portal so you have the endpoints to test it. Then, test the Group Chat hosted agent:
 
 ```bash
-export AGENT_NAME=researchgrchatwf
+export AGENT_NAME=groupchatwriter
 python agents-client/agent_client.py "Write a short article about the latest AI trends."
 ```
 

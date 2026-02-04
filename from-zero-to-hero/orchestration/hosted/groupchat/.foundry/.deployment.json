@@ -1,0 +1,9 @@
+{
+  "hostedAgentDeployOptions": {
+    "dockerContextPath": "/workspaces/agents-observability-tt202/from-zero-to-hero/orchestration/hosted/groupchat",
+    "dockerfilePath": "/workspaces/agents-observability-tt202/from-zero-to-hero/orchestration/hosted/groupchat/Dockerfile",
+    "agentName": "groupchatwriter",
+    "cpu": "1.0",
+    "memory": "2.0Gi"
+  }
+}
