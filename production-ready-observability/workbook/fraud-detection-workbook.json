@@ -1,0 +1,458 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Fraud Detection Workflow - Observability Dashboard\nComprehensive monitoring for the fraud detection AI agent workflow."
+      },
+      "name": "header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "time-range",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                { "durationMs": 300000 },
+                { "durationMs": 900000 },
+                { "durationMs": 1800000 },
+                { "durationMs": 3600000 },
+                { "durationMs": 14400000 },
+                { "durationMs": 43200000 },
+                { "durationMs": 86400000 },
+                { "durationMs": 172800000 },
+                { "durationMs": 604800000 }
+              ]
+            },
+            "label": "Time Range"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Overview Metrics"
+      },
+      "name": "overview-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.transactions.processed\"\n| summarize Transactions = sum(value)\n| project Transactions",
+        "size": 4,
+        "title": "Total Transactions Processed",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "tiles",
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "Transactions",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            }
+          }
+        }
+      },
+      "customWidth": "25",
+      "name": "total-transactions"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.alerts.created\"\n| summarize Alerts = sum(value)\n| project Alerts",
+        "size": 4,
+        "title": "Fraud Alerts Created",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "tiles",
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "Alerts",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "redGreen"
+            }
+          }
+        }
+      },
+      "customWidth": "25",
+      "name": "total-alerts"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.amount_blocked\"\n| summarize AmountBlocked = sum(value)\n| project AmountBlocked = strcat(\"$\", tostring(toint(AmountBlocked)))",
+        "size": 4,
+        "title": "Amount Blocked (USD)",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "tiles",
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "AmountBlocked",
+            "formatter": 1
+          }
+        }
+      },
+      "customWidth": "25",
+      "name": "amount-blocked"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.compliance.sar_filed\"\n| summarize SARs = sum(value)\n| project SARs",
+        "size": 4,
+        "title": "SAR Filings",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "tiles",
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "SARs",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "orange"
+            }
+          }
+        }
+      },
+      "customWidth": "25",
+      "name": "sar-filings"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Risk Analysis"
+      },
+      "name": "risk-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.risk_score.distribution\"\n| summarize AvgRiskScore = avg(value), MinScore = min(value), MaxScore = max(value), Count = count()\n| project AvgRiskScore = round(AvgRiskScore, 1), MinScore, MaxScore, Count",
+        "size": 0,
+        "title": "Risk Score Statistics",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table"
+      },
+      "customWidth": "50",
+      "name": "risk-score-stats"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.risk_score.distribution\"\n| summarize Count = count() by RiskBucket = case(\n    value < 25, \"LOW (0-24)\",\n    value < 50, \"MEDIUM-LOW (25-49)\",\n    value < 75, \"MEDIUM-HIGH (50-74)\",\n    \"HIGH (75-100)\")\n| order by RiskBucket asc",
+        "size": 0,
+        "title": "Risk Score Distribution",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "piechart"
+      },
+      "customWidth": "50",
+      "name": "risk-score-distribution"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.risk_score.distribution\"\n| summarize AvgRiskScore = avg(value) by bin(timestamp, 1h)\n| order by timestamp asc",
+        "size": 0,
+        "title": "Average Risk Score Over Time",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "linechart",
+        "chartSettings": {
+          "yAxis": ["AvgRiskScore"],
+          "ySettings": {
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      "name": "risk-score-timeline"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Model Performance"
+      },
+      "name": "model-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.model.confidence\"\n| summarize AvgConfidence = avg(value), MinConfidence = min(value), MaxConfidence = max(value)\n| project AvgConfidence = round(AvgConfidence * 100, 1), MinConfidence = round(MinConfidence * 100, 1), MaxConfidence = round(MaxConfidence * 100, 1)",
+        "size": 0,
+        "title": "Model Confidence Statistics (%)",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table"
+      },
+      "customWidth": "50",
+      "name": "model-confidence-stats"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.model.confidence\"\n| summarize AvgConfidence = avg(value) * 100 by bin(timestamp, 1h)\n| order by timestamp asc",
+        "size": 0,
+        "title": "Model Confidence Over Time (%)",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "linechart",
+        "chartSettings": {
+          "ySettings": {
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      "customWidth": "50",
+      "name": "model-confidence-timeline"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event.name\"] == \"fraud_detection.model.prediction\"\n| extend TopFeatures = tostring(customDimensions[\"event.top_features\"])\n| where isnotempty(TopFeatures)\n| mv-expand Feature = parse_json(TopFeatures)\n| summarize Count = count() by tostring(Feature)\n| top 10 by Count desc",
+        "size": 0,
+        "title": "Top Risk Factors",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "barchart"
+      },
+      "name": "top-risk-factors"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Fraud Prevention & Alerts"
+      },
+      "name": "alerts-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.alerts.created\"\n| extend Severity = tostring(customDimensions.severity)\n| summarize Count = sum(value) by Severity\n| order by Count desc",
+        "size": 0,
+        "title": "Alerts by Severity",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "piechart"
+      },
+      "customWidth": "50",
+      "name": "alerts-by-severity"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.alerts.created\"\n| summarize Alerts = sum(value) by bin(timestamp, 1h)\n| order by timestamp asc",
+        "size": 0,
+        "title": "Alerts Over Time",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "barchart"
+      },
+      "customWidth": "50",
+      "name": "alerts-timeline"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.amount_blocked\"\n| summarize AmountBlocked = sum(value) by bin(timestamp, 1h)\n| order by timestamp asc",
+        "size": 0,
+        "title": "Amount Blocked Over Time (USD)",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "areachart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "AmountBlocked",
+              "color": "green"
+            }
+          ]
+        }
+      },
+      "name": "amount-blocked-timeline"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Customer Experience"
+      },
+      "name": "customer-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.customer_friction\"\n| extend FrictionType = tostring(customDimensions.friction_type)\n| summarize Count = sum(value) by FrictionType\n| order by Count desc",
+        "size": 0,
+        "title": "Customer Friction Events by Type",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "piechart"
+      },
+      "customWidth": "50",
+      "name": "friction-by-type"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.customer_friction\"\n| summarize FrictionEvents = sum(value) by bin(timestamp, 1h)\n| order by timestamp asc",
+        "size": 0,
+        "title": "Customer Friction Over Time",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "linechart"
+      },
+      "customWidth": "50",
+      "name": "friction-timeline"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.false_positives\"\n| summarize FalsePositives = sum(value) by bin(timestamp, 1d)\n| order by timestamp asc",
+        "size": 0,
+        "title": "False Positives Over Time",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "barchart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "FalsePositives",
+              "color": "redBright"
+            }
+          ]
+        }
+      },
+      "name": "false-positives-timeline"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Compliance & Regulatory"
+      },
+      "name": "compliance-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event.name\"] == \"fraud_detection.compliance.sar_filed\"\n| project \n    Timestamp = timestamp,\n    TransactionID = tostring(customDimensions[\"event.transaction_id\"]),\n    SARID = tostring(customDimensions[\"event.sar_id\"]),\n    FilingDeadline = tostring(customDimensions[\"event.filing_deadline\"]),\n    AmountThresholdExceeded = tostring(customDimensions[\"event.amount_threshold_exceeded\"]),\n    CustomerID = tostring(customDimensions[\"event.customer_id\"])\n| order by Timestamp desc\n| take 50",
+        "size": 0,
+        "title": "Recent SAR Filings",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table"
+      },
+      "name": "sar-filings-table"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.compliance.sar_filed\"\n| summarize SARs = sum(value) by bin(timestamp, 1d)\n| order by timestamp asc",
+        "size": 0,
+        "title": "SAR Filings Over Time",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "barchart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "SARs",
+              "color": "orange"
+            }
+          ]
+        }
+      },
+      "name": "sar-timeline"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Agent Performance"
+      },
+      "name": "agent-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name contains \"processing\" or name contains \"agent\"\n| summarize \n    AvgTime = round(avg(value), 2),\n    P50 = round(percentile(value, 50), 2),\n    P95 = round(percentile(value, 95), 2),\n    P99 = round(percentile(value, 99), 2),\n    Count = count()\n    by name\n| order by name asc",
+        "size": 0,
+        "title": "Agent Processing Time (seconds)",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table"
+      },
+      "name": "agent-performance-table"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name contains \"processing\" or name contains \"agent\"\n| summarize AvgProcessingTime = avg(value) by name, bin(timestamp, 1h)\n| order by timestamp asc",
+        "size": 0,
+        "title": "Agent Processing Time Over Time",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "linechart"
+      },
+      "name": "agent-performance-timeline"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customMetrics\n| where timestamp {TimeRange}\n| where name == \"fraud_detection.transactions.processed\"\n| summarize TransactionsProcessed = sum(value) by bin(timestamp, 1h)\n| order by timestamp asc",
+        "size": 0,
+        "title": "Transactions Processed Over Time",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table"
+      },
+      "name": "agent-success-rate"
+    }
+  ],
+  "fallbackResourceIds": [],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
