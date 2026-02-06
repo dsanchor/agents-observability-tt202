@@ -1,23 +1,78 @@
 # Production Ready Observability - Fraud Detection Agents
 
-This project demonstrates production-grade observability patterns for AI agent systems through a real-world fraud detection scenario. It features three specialized AI agents—**CustomerDataAgent** (retrieves customer profiles and transaction history), **RiskAnalyserAgent** (evaluates fraud risk using regulations and policies), and **FraudAlertAgent** (creates alerts and compliance filings)—orchestrated in a sequential workflow.
+This project demonstrates production-grade observability patterns for AI agent systems through a real-world fraud detection scenario. It features three specialized AI agents orchestrated in a sequential workflow:
 
-**Key capabilities:**
+```mermaid
+flowchart LR
+    subgraph Input
+        TX[/"Transaction Request"/]
+    end
+    
+    subgraph Agents["Fraud Detection Workflow"]
+        A1[("CustomerDataAgent<br/>―――――――――<br/>Cosmos DB")]
+        A2[("RiskAnalyserAgent<br/>―――――――――<br/>AI Search")]
+        A3[("FraudAlertAgent<br/>―――――――――<br/>Decision Engine")]
+    end
+    
+    subgraph Output
+        D1[/"✓ Approved"/]
+        D2[/"⚠ Investigate"/]
+        D3[/"✗ Blocked"/]
+    end
+    
+    subgraph Observability["Telemetry Pipeline"]
+        T1["Spans & Traces"]
+        T2["Business Metrics"]
+        T3["Custom Events"]
+    end
+    
+    TX --> A1
+    A1 -->|"Customer Profile<br/>+ History"| A2
+    A2 -->|"Risk Score<br/>+ Factors"| A3
+    A3 --> D1
+    A3 --> D2
+    A3 --> D3
+    
+    A1 -.-> T1
+    A2 -.-> T2
+    A3 -.-> T3
+    
+    T1 --> AI["Application Insights"]
+    T2 --> AI
+    T3 --> AI
+    
+    AI --> WB["Workbooks"]
+    AI --> PBI["Power BI"]
+```
+
+- **CustomerDataAgent** — Retrieves customer profiles and transaction history from Cosmos DB
+- **RiskAnalyserAgent** — Evaluates fraud risk using AI Search-indexed regulations and policies  
+- **FraudAlertAgent** — Creates alerts and compliance filings (SAR reports)
+
+**Workshop Structure:**
+- **Part 1 - Infrastructure Deployment**: Deploy Azure resources (AI Services, Cosmos DB, AI Search, App Insights) and seed sample data
+- **Part 2 - Create the Tracing Engine**: Run individual agents, orchestrate workflows, and generate telemetry with OpenTelemetry
+- **Part 3 - Visualize Traces and Logs**: Import Application Insights workbooks, explore with Grafana, and build Power BI dashboards for business stakeholders
+
+**Key Capabilities:**
 - **End-to-end distributed tracing** with hierarchical spans for each agent operation
 - **Business metrics** tracking risk scores, blocked amounts, SAR filings, and customer friction
 - **Azure integration** with Application Insights, Cosmos DB, and AI Search
-- **Pre-built dashboards** via an importable Application Insights workbook
-- **Hands-on exercises** progressing from individual agents to full workflow orchestration and batch telemetry generation
+- **Pre-built dashboards** via Application Insights workbooks and Power BI templates
+- **Business transparency** through executive dashboards that propagate observability to decision makers
 
 The observability implementation showcases best practices for spans, attributes, events, and metrics—providing a reference architecture for monitoring AI agent systems in production.
 
-## Infrastructure Deployment
+## Part 1 - Infrastructure Deployment
 
-### Prerequisites
+**Prerequisites**
 - Azure CLI installed and logged in (`az login`)
 - Subscription with permissions to create resources
 
-### Deploy Resources
+> [!NOTE]
+> Infrastructure in `Part 1 - From zero to hero` is different than the one in this part.
+
+### 1.1 Deploy Resources
 
 ```bash
 export RG=<your-resource-group>
@@ -33,7 +88,7 @@ az deployment group create \
   --parameters @production-ready-observability/infra/setup.parameters.json
 ```
 
-### Configure Environment
+### 1.2 Configure Environment
 
 Run the setup script to populate the `.env` file with all deployed resource keys:
 
@@ -41,7 +96,7 @@ Run the setup script to populate the `.env` file with all deployed resource keys
 ./infra/setup-env.sh $RG
 ```
 
-### Seed Data
+### 1.3 Seed Data
 
 Populate Cosmos DB and Azure AI Search with sample data:
 
@@ -56,7 +111,11 @@ This will:
 - Set up the `regulations-policies` index in Azure AI Search
 - Upload regulatory documents for the risk analysis agent
 
-## Exercise 1 - Run Individual Agents (standalone with Foundry registration)
+## Part 2 - Create the Tracing Engine
+
+
+### 2.1 - Run Individual Agents 
+
 ```bash
 python agents/customer_data_agent.py
 python agents/risk_analyser_agent.py
@@ -65,9 +124,8 @@ python agents/fraud_alert_agent.py
 
 Go to your new [Foundry Portal](www.ai.azure.com/nextgen) and find a first version of your 3 agents there.
 
-## Exercise 2 - Run Workflow Agents 
+### 2.2 Run Workflow of the 3 Agents 
 
-### Workflow (orchestrates all 3 agents)
 ```bash
 python workflows/workflow.py
 ```
@@ -80,9 +138,7 @@ This workflow orchestrates the three agents registered in the Foundry Portal in 
 
 The workflow produces comprehensive telemetry including distributed traces, business events, and metrics that flow to Application Insights for monitoring and analysis.
 
-For detailed documentation on how distributed tracing is implemented in this workflow, including span creation, business events, metrics, and the complete trace hierarchy, see:
-
-**[Tracing Documentation](TRACING.md)**
+For detailed documentation on how distributed tracing is implemented in this workflow, including span creation, business events, metrics, and the complete trace hierarchy, check: **[Tracing Documentation](TRACING.md)**
 
 This guide covers:
 - Telemetry initialization and the `TelemetryManager` singleton
@@ -92,7 +148,7 @@ This guide covers:
 - Complete trace hierarchy visualization
 - All available business metrics and how to query them
 
-## Exercise 3 - Batch Run for Telemetry Generation
+### 2.3  Batch Run for Telemetry Generation
 
 Run a batch of 10 transactions to generate telemetry data for Application Insights dashboards and workbooks.
 
@@ -111,7 +167,9 @@ The batch runner processes 10 transactions and generates:
 - **Console summary** with statistics
 
 
-## Exercise 4 - Import Application Insights Workbook
+## Part 3 - Where to for Traces and Logs of Foundry Agents 
+
+### 3.1 - Import Application Insights Workbook
 
 A pre-built workbook is available for visualizing all fraud detection metrics:
 
@@ -138,13 +196,13 @@ The workbook includes:
 - **Transaction Explorer**: Search and filter recent transactions
 - **Errors & Exceptions**: Error monitoring and troubleshooting
 
-## Exercise 5 - Explore your Traces with Grafana
+### 3.2 Explore your Traces with Grafana
 
-## Exercise 6 - Explore the Transaction Search 
+### 3.3 Explore the Transaction Search 
 
-## Exercise 7 - Send the data to your BDMs
+### 3.4 Send the data to your BDMs - Power BI Dashboard
 
-### Why Business Dashboards Matter
+#### Why Business Dashboards Matter
 
 While Application Insights workbooks are excellent for technical teams, **Business Decision Makers (BDMs)** need access to the same observability data in tools they already use—like Power BI. This ensures that:
 
@@ -155,15 +213,15 @@ While Application Insights workbooks are excellent for technical teams, **Busine
 
 The observability data we've collected with OpenTelemetry isn't just for debugging—it's a business asset that demonstrates the AI system's value and trustworthiness.
 
-### Connect Power BI to Log Analytics
+#### Connect Power BI to Log Analytics
 
-#### Step 1: Get Your Log Analytics Workspace Details
+##### 3.4.1 - Get Your Log Analytics Workspace Details
 
 1. Go to **Azure Portal** → **Log Analytics workspaces**
 2. Select your workspace (e.g., `law-frauddet5db5`)
 3. Note the **Workspace ID** from the Properties blade
 
-#### Step 2: Connect Power BI Desktop
+##### 3.4.2 Connect Power BI Desktop
 
 1. Open **Power BI Desktop**
 2. Click **Get Data** → Search for **"Azure Data Explorer (Kusto)"**
@@ -174,7 +232,7 @@ The observability data we've collected with OpenTelemetry isn't just for debuggi
 4. Leave the database field empty
 5. Authenticate with your Azure AD credentials
 
-#### Step 3: Import the Data Tables
+##### 3.4.3 Import the Data Tables
 
 Select these tables from your workspace:
 - **AppMetrics** - Contains all business metrics (transactions, alerts, amount blocked, risk scores)
@@ -182,7 +240,7 @@ Select these tables from your workspace:
 
 > **Note**: For workspace-based Application Insights, use `AppMetrics` and `AppTraces` (not `customMetrics` and `traces`).
 
-#### Step 4: Create a Date Column for Time Series
+##### 3.4.4 Create a Date Column for Time Series
 
 Since DirectQuery mode has limitations, add a custom column in Power Query:
 
@@ -191,7 +249,7 @@ Since DirectQuery mode has limitations, add a custom column in Power Query:
 3. Name: `Date`, Formula: `DateTime.Date([TimeGenerated])`
 4. **Close & Apply**
 
-#### Step 5: Build Your Executive Dashboard
+##### 3.4.5 Build Your Executive Dashboard
 
 Create these key visuals for business stakeholders:
 
@@ -206,11 +264,74 @@ Create these key visuals for business stakeholders:
 
 For this workshop, we have left you with a sample dashboard under the folder `powerbi/`. If you want to use it, go ahead. All you need to do is change the Data Source.
 
-#### Step 6: Schedule Refresh
+Your dashboard should look something like this:
+
+![alt text](../images/dashboard.png)
+
+##### Step 3.4.6 - Schedule Refresh
 
 1. Publish to **Power BI Service**
 2. Configure **Scheduled Refresh** (hourly or daily)
 3. Share dashboard with BDM stakeholders
+
+---
+
+## Part 4 - Deploy to Production with Tracing
+
+When you deploy these agents to production (e.g., Azure Container Apps, Kubernetes, or Azure Functions), the tracing continues to work seamlessly. Here's why:
+
+### How Tracing Works in Containers
+
+The observability code we wrote is **environment-agnostic**. The `TelemetryManager` reads the Application Insights connection string from an environment variable:
+
+```python
+app_insights_connection_string = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
+
+if app_insights_connection_string:
+    configure_azure_monitor(
+        connection_string=app_insights_connection_string,
+        enable_live_metrics=True,
+    )
+```
+
+This means:
+- **Locally**: The connection string comes from your `.env` file
+- **In Containers**: The connection string is injected as an environment variable at runtime
+- **Same code, same traces**: No code changes needed between environments
+
+### What You Need to Do
+
+1. **Pass the environment variable** when deploying your container:
+   ```
+   APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=xxx;IngestionEndpoint=https://...
+   ```
+
+2. **That's it.** The `azure-monitor-opentelemetry` package automatically detects the connection string and sends traces to the same Application Insights instance.
+
+### The Result
+
+Whether running locally or in production:
+- All spans, events, and metrics flow to Application Insights
+- The same workbooks and Power BI dashboards display production data
+- Business stakeholders see real-time fraud detection performance
+- Distributed traces link across all agent invocations
+
+This is the power of OpenTelemetry—**instrument once, observe everywhere**.
+
+---
+
+## Summary
+
+This workshop demonstrated how to build production-grade observability for AI agent systems:
+
+| Part | Focus | Outcome |
+|------|-------|---------|
+| **Part 1** | Infrastructure | Azure resources deployed and configured |
+| **Part 2** | Tracing Engine | OpenTelemetry instrumentation with business metrics |
+| **Part 3** | Visualization | Workbooks, Grafana, and Power BI dashboards |
+| **Part 4** | Production | Same tracing works in containers via environment variables |
+
+The observability patterns demonstrated here—distributed tracing, business metrics, and executive dashboards—ensure that AI systems remain transparent, auditable, and trustworthy from development through production.
 
 
 
