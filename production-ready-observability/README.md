@@ -198,7 +198,19 @@ The workbook includes:
 
 ### 3.2 Explore your Traces with Grafana
 
+Under Agents (preview) in the Application Insights portal, you can visualize an agent dashboard with several panes, and also using Grafana dashboards under Agents (preview) or under Dashboards with Grafana bar, selecting the Agent Framework dashboard.
+
+![alt text](../images/grafana.png)
+
+
+
 ### 3.3 Explore the Transaction Search 
+
+We can also explore the transaction search in Application Insights, where we can see all the transactions that have been processed, and we can filter by different dimensions, such as the risk score, the amount blocked, or the customer ID.
+
+For that we can use the search bar in the Application Insights portal, kusto queries, or using the grafana dashboard under trace detail pane, where we can see the details of each transaction, including the spans, the events, and the metrics.
+
+![alt text](../images/traces.png)
 
 ### 3.4 Send the data to your BDMs - Power BI Dashboard
 
