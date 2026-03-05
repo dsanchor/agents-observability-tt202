@@ -205,7 +205,7 @@ Once we have the workflow as agent tested locally and ready to be deploy as `hos
 
 NOTE: Two new repositories have been created for the hosted agent code. The following instructions are good for understanding how to deploy, but if you want to skip directly to the hosted agent code, you can find it under the following repositories:
 
-- Group Chat Agent: TODO
+- Group Chat Agent: https://github.com/dsanchor/groupchat-orchestration-writer.git
 - Sequential Agents: https://github.com/dsanchor/sequential-orchestration-writer.git
 
 ### Understand folder structure
