@@ -14,7 +14,7 @@ from xmlrpc import client
 from azure.ai.projects.aio import AIProjectClient
 from azure.ai.projects.models import (
     PromptAgentDefinition,
-    BingGroundingAgentTool,
+    BingGroundingTool,
     BingGroundingSearchToolParameters,
     BingGroundingSearchConfiguration,
     ConnectionType
@@ -89,7 +89,7 @@ async def create_researcher_agent():
             # Prepare tools
             tools = []
             if bing_connection_id:
-                tools.append(BingGroundingAgentTool(
+                tools.append(BingGroundingTool(
                     bing_grounding=BingGroundingSearchToolParameters(
                         search_configurations=[
                             BingGroundingSearchConfiguration(

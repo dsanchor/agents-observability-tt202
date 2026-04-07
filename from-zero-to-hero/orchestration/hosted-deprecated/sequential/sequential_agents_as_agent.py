@@ -16,7 +16,7 @@ from agent_framework import (
     WorkflowRunState,
     handler,
 )
-from agent_framework.azure import AzureAIClient
+from agent_framework.azure import AzureOpenAIResponsesClient
 from azure.ai.projects.aio import AIProjectClient
 from observability import configure_azure_monitor_tracing
 from azure.identity.aio import DefaultAzureCredential
@@ -41,22 +41,23 @@ Prerequisites:
 
 async def create_chat_client_for_agent(
     project_client: AIProjectClient,
-    agent_name: str
-) -> AzureAIClient:
-    """Create an AzureAIClient for a Foundry agent.
+) -> AzureOpenAIResponsesClient:
+    """Create an AzureOpenAIResponsesClient for orchestrated agents.
 
     Args:
         project_client: The AIProjectClient instance
-        agent_name: The name of the agent in Foundry
-
     Returns:
-        Configured AzureAIClient for the agent
+        Configured AzureOpenAIResponsesClient for the agent
     """
 
-    return AzureAIClient(
+    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+    if not model_deployment:
+        raise ValueError(
+            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
+
+    return AzureOpenAIResponsesClient(
         project_client=project_client,
-        agent_name=agent_name,
-        use_latest_version=True,
+        deployment_name=model_deployment,
     )
 
 
@@ -181,10 +182,10 @@ async def main() -> None:
                 return
 
             # Create chat clients for the three Foundry agents
-            print("Loading agents from Microsoft Foundry...")
-            researcher_client = await create_chat_client_for_agent(project_client, "ResearcherAgentV2")
-            writer_client = await create_chat_client_for_agent(project_client, "WriterAgentV2")
-            reviewer_client = await create_chat_client_for_agent(project_client, "ReviewerAgentV2")
+            print("Loading agents from deployment...")
+            researcher_client = await create_chat_client_for_agent(project_client)
+            writer_client = await create_chat_client_for_agent(project_client)
+            reviewer_client = await create_chat_client_for_agent(project_client)
             print("✓ All agents loaded successfully\n")
 
             # Create agents using the Foundry clients

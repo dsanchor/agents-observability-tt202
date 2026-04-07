@@ -61,30 +61,16 @@ export BING_PROJECT_CONNECTION_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroup
 
 ### Create venv and install the Agent Framework packages
 
-As of March 3rd, 2026, I will create two venvs:
-- venvrc2 for latest MAF packages (rc2)
-- venv260107 for previous MAF packages (260107) and compatible with azure-ai-agentserver-agentframework 1.0.0b15
+As of April 7th 2026, although MAF has been released GA with version 1.0.0, I will create a virtual environment for version 1.0.0 RC3, as the GA version is not yet compatible with the latest azure-ai-agentserver-agentframework 1.0.0b17, which is required for the hosted agents part of the demo.
 
 ```bash
-python3 -m venv venvrc2
-source venvrc2/bin/activate
-pip install -r requirements-rc2.txt
+python3 -m venv venvrc3
+source venvrc3/bin/activate
+pip install -r requirements-rc3.txt
 pip list
-deactivate
-python3 -m venv venv260107
-source venv260107/bin/activate
-pip install -r requirements-260107.txt
-pip list
-deactivate
 ```
 
 ### Create agents
-
-Activate latest venv:
-
-```bash
-source venvrc2/bin/activate
-```
 
 **Using Foundry SDK**
 
@@ -133,15 +119,6 @@ python orchestration/demo/group_chat_agent_manager.py
 
 ## Build as Agent and trace the workflow locally
 
-As per today (March 3rd, 2026), we have to use the previous venv (260107) to build the orchestration as an agent.
-
-Activate the previous venv:
-
-```bash
-deactivate
-source venv260107/bin/activate
-```
-
 ### Workflow as agent
 
 First, we will adapt the workflow to become an agent. For that, we will use the `azure-ai-agentserver-agentframework` library to expose the workflow as agent. The relevant code is:
@@ -158,10 +135,17 @@ We will use the `AI Toolkit` extension to generate tracing configuration. Open t
 
 ![AI Toolkit Traces Enable](images/aitoolkitraces-enable.png)
 
+NOTE: if you don't see the option to enable tracing, use the tool directly in GitHub Copilot. Enable `agent` mode, select the `orchestration/tracing/group_chat_agent_manager_as_agent.py` file and run: 
+
+```
+#aitk_get_tracing_code_gen_best_practices add tracing to current file
+```
 
 The extension will use Github Copilot to generate the tracing configuration code:
 
 ![AI Toolkit Traces Configuration](images/aitoolkitraces-copilot.png)
+
+One important thing, the port that will be used to send traces to the Microsoft Foundry extension is 4319.
 
 ### Run and test locally
 
@@ -212,8 +196,8 @@ NOTE: Two new repositories have been created for the hosted agent code. The foll
 
 In order to deploy the workflow as a hosted agent in Foundry, we will need to create several files under the agent's folder:
 
-- the agent code: `orchestration/hosted/groupchat/group_chat_agent_manager_as_agent.py`
-- a python file with the OpenTelemetry configuration for Azure Monitor: `orchestration/hosted/groupchat/observability.py`. This file will be used to configure the OpenTelemetry providers to send traces to Azure Monitor. We need this file because the configuration for Azure Monitor is different than the one for local tracing with AI Toolkit, so we need to separate the configuration and import the correct one depending on where we are running (locally with AI Toolkit or as hosted agent in Foundry).
+- the agent code: `orchestration/hosted-deprecated/groupchat/group_chat_agent_manager_as_agent.py`
+- a python file with the OpenTelemetry configuration for Azure Monitor: `orchestration/hosted-deprecated/groupchat/observability.py`. This file will be used to configure the OpenTelemetry providers to send traces to Azure Monitor. We need this file because the configuration for Azure Monitor is different than the one for local tracing with AI Toolkit, so we need to separate the configuration and import the correct one depending on where we are running (locally with AI Toolkit or as hosted agent in Foundry).
 - a `requirements.txt` file with the dependencies
 - a `Dockerfile` to build the container image
 - a .env file with environment variables that are then injected into the container. For this demo, the required variables are:
@@ -222,13 +206,13 @@ In order to deploy the workflow as a hosted agent in Foundry, we will need to cr
     AZURE_AI_MODEL_DEPLOYMENT_NAME=
     ```
 
-Also, we need to create a `.foundry/.deployment.json` file to define the hosted agent deployment options. The Microsoft Foundry extension will look for this file to know how to build and deploy the hosted agent. The content of the file would be generated for you if you use the extension to deploy, but there is a limitation that it doesn't generate the correct dockerContextPath if your Dockerfile is not in the root of the project, so make sure to update those paths to point to the `orchestration/hosted/groupchat` folder:
+Also, we need to create a `.foundry/.deployment.json` file to define the hosted agent deployment options. The Microsoft Foundry extension will look for this file to know how to build and deploy the hosted agent. The content of the file would be generated for you if you use the extension to deploy, but there is a limitation that it doesn't generate the correct dockerContextPath if your Dockerfile is not in the root of the project, so make sure to update those paths to point to the `orchestration/hosted-deprecated/groupchat` folder:
 
 ```json
 {
   "hostedAgentDeployOptions": {
-    "dockerContextPath": "/workspaces/agents-observability-tt202/from-zero-to-hero/orchestration/hosted/groupchat",
-    "dockerfilePath": "/workspaces/agents-observability-tt202/from-zero-to-hero/orchestration/hosted/groupchat/Dockerfile",
+    "dockerContextPath": "/workspaces/agents-observability-tt202/from-zero-to-hero/orchestration/hosted-deprecated/groupchat",
+    "dockerfilePath": "/workspaces/agents-observability-tt202/from-zero-to-hero/orchestration/hosted-deprecated/groupchat/Dockerfile",
     "agentName": "groupchatwriter",
     "cpu": "1.0",
     "memory": "2.0Gi"
@@ -238,11 +222,11 @@ Also, we need to create a `.foundry/.deployment.json` file to define the hosted 
 
 You can try without this file and you will be asked to fill in the deployment options in the Microsoft Foundry extension UI when you click on Deploy, but the final deployment will fail as the context is just the root of the project and not the folder where the Dockerfile is (that is defult behavior of the extension).
 
-To avoid this, you can copy the content from `orchestration/hosted/groupchat/.foundry/.deployment.json` to the root `.foundry/.deployment.json` before deploying, or just update the paths in the existing root `.foundry/.deployment.json` to point to the correct Dockerfile and context.
+To avoid this, you can copy the content from `orchestration/hosted-deprecated/groupchat/.foundry/.deployment.json` to the root `.foundry/.deployment.json` before deploying, or just update the paths in the existing root `.foundry/.deployment.json` to point to the correct Dockerfile and context.
 
 ### Deploy
 
-In the Local Agent Playground from the Microsoft Foundry extension, click on `Deploy` and select the folder `orchestration/hosted/groupchat`. This will build the container image and deploy it as a hosted agent in Foundry:
+In the Local Agent Playground from the Microsoft Foundry extension, click on `Deploy` and select the folder `orchestration/hosted-deprecated/groupchat`. This will build the container image and deploy it as a hosted agent in Foundry:
 
 ![Deploy hosted agent](images/deployhosted.png)
 

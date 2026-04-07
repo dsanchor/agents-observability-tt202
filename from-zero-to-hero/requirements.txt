@@ -1,3 +1,3 @@
-# azure-ai-agentserver-agentframework==1.0.0b15
-agent-framework==1.0.0rc2
+# azure-ai-agentserver-agentframework==1.0.0b17
+agent-framework==1.0.0
 azure-monitor-opentelemetry

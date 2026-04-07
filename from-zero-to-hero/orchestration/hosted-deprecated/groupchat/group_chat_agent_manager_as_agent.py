@@ -13,7 +13,7 @@ from agent_framework import (
     Role,
     WorkflowOutputEvent,
 )
-from agent_framework.azure import AzureAIClient, AzureOpenAIChatClient
+from agent_framework.azure import AzureOpenAIResponsesClient, AzureOpenAIChatClient
 from observability import configure_azure_monitor_tracing
 from azure.ai.projects.aio import AIProjectClient
 from azure.identity import DefaultAzureCredential as SyncDefaultAzureCredential
@@ -37,53 +37,46 @@ Prerequisites:
 
 
 async def create_chat_client_for_agent(
-    project_client: AIProjectClient,
-    agent_name: str
-) -> AzureAIClient:
-    """Create an AzureAIClient for a Foundry agent.
-
-    Args:
-        project_client: The AIProjectClient instance
-        agent_name: The name of the agent in Foundry
-
-    Returns:
-        Configured AzureAIClient for the agent
-    """
-
-    return AzureAIClient(
-        project_client=project_client,
-        agent_name=agent_name,
-        # Property agent_version is required for existing agents.
-        # If this property is not configured, the client will try to create a new agent using
-        # provided agent_name.
-        # It's also possible to leave agent_version empty but set use_latest_version=True.
-        # This will pull latest available agent version and use that version for operations.
-        # agent_version=version,
-        use_latest_version=True,
-    )
-
-
-async def create_chat_client_for_coordinator(
     project_client: AIProjectClient
-) -> AzureAIClient:
-    """Create an AzureAIClient for the coordinator agent.
+) -> AzureOpenAIResponsesClient:
+    """Create an AzureOpenAIResponsesClient for orchestrated agents.
 
     Args:
         project_client: The AIProjectClient instance
 
     Returns:
-        Configured AzureAIClient for the agent
+        Configured AzureOpenAIResponsesClient for the agent
     """
-
-    # Get model deployment name from environment variable
     model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
     if not model_deployment:
         raise ValueError(
             "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
 
-    return AzureAIClient(
+    return AzureOpenAIResponsesClient(
         project_client=project_client,
-        model_deployment_name=model_deployment,
+        deployment_name=model_deployment,
+    )
+
+
+async def create_chat_client_for_coordinator(
+    project_client: AIProjectClient
+) -> AzureOpenAIResponsesClient:
+    """Create an AzureOpenAIResponsesClient for the coordinator agent.
+
+    Args:
+        project_client: The AIProjectClient instance
+
+    Returns:
+        Configured AzureOpenAIResponsesClient for the agent
+    """
+    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+    if not model_deployment:
+        raise ValueError(
+            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
+
+    return AzureOpenAIResponsesClient(
+        project_client=project_client,
+        deployment_name=model_deployment,
     )
 
 

@@ -1,32 +1,11 @@
 # Copyright (c) Microsoft. All rights reserved.
 
-import asyncio
-import logging
-import os
-from typing import cast
-
-from agent_framework import (
-    AgentRunUpdateEvent,
-    ChatAgent,
-    ChatMessage,
-    GroupChatBuilder,
-    Role,
-    WorkflowOutputEvent,
-)
-from agent_framework.azure import AzureAIClient, AzureOpenAIChatClient
-from agent_framework.observability import configure_otel_providers
-from azure.ai.projects.aio import AIProjectClient
-from azure.identity import DefaultAzureCredential as SyncDefaultAzureCredential
-from azure.identity.aio import DefaultAzureCredential
-from azure.ai.agentserver.agentframework import from_agent_framework
-
-
 """
-Sample: Group Chat with Agent-Based Manager
+Sample: Group Chat with Agent-Based Manager (RC2 API)
 
 What it does:
-- Demonstrates the new set_manager() API for agent-based coordination
-- Manager is a full ChatAgent with access to tools, context, and observability
+- Demonstrates the orchestrator_agent API for agent-based coordination
+- Manager is a full Agent with access to tools, context, and observability
 - Coordinates a researcher, writer, and reviewer agent to solve tasks collaboratively
 - Uses agents created in Microsoft Foundry
 
@@ -35,65 +14,66 @@ Prerequisites:
 - Agents (ResearcherAgentV2, WriterAgentV2, ReviewerAgentV2) created in Foundry
 """
 
+import asyncio
+import os
+from typing import cast
 
-async def create_chat_client_for_agent(
-    project_client: AIProjectClient,
-    agent_name: str
-) -> AzureAIClient:
-    """Create an AzureAIClient for a Foundry agent.
+from agent_framework import (
+    Agent,
+    Message,
+    WorkflowRunState,
+)
+from agent_framework_orchestrations import GroupChatBuilder
+from agent_framework.azure import AzureOpenAIResponsesClient
+from azure.ai.projects.aio import AIProjectClient
+from azure.identity.aio import DefaultAzureCredential
+from azure.ai.agentserver.agentframework import from_agent_framework
 
-    Args:
-        project_client: The AIProjectClient instance
-        agent_name: The name of the agent in Foundry
-
-    Returns:
-        Configured AzureAIClient for the agent
-    """
-
-    return AzureAIClient(
-        project_client=project_client,
-        agent_name=agent_name,
-        # Property agent_version is required for existing agents.
-        # If this property is not configured, the client will try to create a new agent using
-        # provided agent_name.
-        # It's also possible to leave agent_version empty but set use_latest_version=True.
-        # This will pull latest available agent version and use that version for operations.
-        # agent_version=version,
-        use_latest_version=True,
-    )
-
-
-async def create_chat_client_for_coordinator(
+async def create_client_for_agent(
     project_client: AIProjectClient
-) -> AzureAIClient:
-    """Create an AzureAIClient for the coordinator agent.
+) -> AzureOpenAIResponsesClient:
+    """Create an AzureOpenAIResponsesClient for orchestrated agents.
 
     Args:
         project_client: The AIProjectClient instance
 
     Returns:
-        Configured AzureAIClient for the agent
+        Configured AzureOpenAIResponsesClient for the agent
     """
-
-    # Get model deployment name from environment variable
     model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
     if not model_deployment:
         raise ValueError(
             "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
 
-    return AzureAIClient(
+    return AzureOpenAIResponsesClient(
         project_client=project_client,
-        model_deployment_name=model_deployment,
+        deployment_name=model_deployment,
+    )
+
+
+async def create_client_for_coordinator(
+    project_client: AIProjectClient
+) -> AzureOpenAIResponsesClient:
+    """Create an AzureOpenAIResponsesClient for the coordinator agent.
+
+    Args:
+        project_client: The AIProjectClient instance
+
+    Returns:
+        Configured AzureOpenAIResponsesClient for the coordinator
+    """
+    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+    if not model_deployment:
+        raise ValueError(
+            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
+
+    return AzureOpenAIResponsesClient(
+        project_client=project_client,
+        deployment_name=model_deployment,
     )
 
 
 async def main() -> None:
-    # Set up OpenTelemetry tracing
-    configure_otel_providers(
-        vs_code_extension_port=4317,  # AI Toolkit gRPC port
-        enable_sensitive_data=True  # Enable capturing prompts and completions
-    )
-
     # Verify environment variables
     if not os.environ.get("AZURE_AI_PROJECT_ENDPOINT"):
         raise ValueError(
@@ -105,17 +85,16 @@ async def main() -> None:
             credential=credential
         ) as project_client:
 
-            # Create chat clients for the three Foundry agents
-            print("Loading agents from Microsoft Foundry...")
-            researcher_client = await create_chat_client_for_agent(project_client, "ResearcherAgentV2")
-            writer_client = await create_chat_client_for_agent(project_client, "WriterAgentV2")
-            reviewer_client = await create_chat_client_for_agent(project_client, "ReviewerAgentV2")
-            coordinator_client = await create_chat_client_for_coordinator(project_client)
+            # Create clients for the three orchestrated agents
+            print("Loading agents from deployment...")
+            researcher_client = await create_client_for_agent(project_client)
+            writer_client = await create_client_for_agent(project_client)
+            reviewer_client = await create_client_for_agent(project_client)
+            coordinator_client = await create_client_for_coordinator(project_client)
             print("✓ All agents loaded successfully\n")
 
-            # Create coordinator agent with structured output for speaker selection
-            # Note: response_format is enforced to ManagerSelectionResponse by set_manager()
-            coordinator = ChatAgent(
+            # Create coordinator agent (RC2 API: client= instead of chat_client=)
+            coordinator = Agent(
                 name="Coordinator",
                 description="Coordinates multi-agent collaboration by selecting speakers",
                 instructions="""
@@ -131,39 +110,41 @@ async def main() -> None:
                 - Only finish after all three have contributed meaningfully
                 - Allow for multiple rounds if the task requires it
                 """,
-                chat_client=coordinator_client,
+                client=coordinator_client,
             )
 
-            researcher = ChatAgent(
+            researcher = Agent(
                 name="ResearcherV2",
                 description="Collects relevant information using web search",
-                chat_client=researcher_client,
+                client=researcher_client,
             )
 
-            writer = ChatAgent(
+            writer = Agent(
                 name="WriterV2",
                 description="Creates well-structured content based on research",
-                chat_client=writer_client,
+                client=writer_client,
             )
 
-            reviewer = ChatAgent(
+            reviewer = Agent(
                 name="ReviewerV2",
                 description="Evaluates content quality and provides constructive feedback",
-                chat_client=reviewer_client,
+                client=reviewer_client,
             )
 
-            workflow = (
-                GroupChatBuilder()
-                .set_manager(coordinator)
-                .with_termination_condition(lambda messages: sum(1 for msg in messages if msg.role == Role.ASSISTANT) >= 6)
-                .participants([researcher, writer, reviewer])
-                .build()
-            )
+            # Build workflow using RC2 API
+            # Constructor params instead of fluent builder methods
+            def termination_check(messages: list[Message]) -> bool:
+                return sum(1 for msg in messages if str(msg.role) == "assistant") >= 6
+
+            workflow = GroupChatBuilder(
+                participants=[researcher, writer, reviewer],
+                orchestrator_agent=coordinator,
+                termination_condition=termination_check,
+            ).build()
 
             # make the workflow an agent and ready to be hosted
             agentwf = workflow.as_agent()
             await from_agent_framework(agentwf).run_async()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
