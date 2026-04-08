@@ -28,31 +28,8 @@ from agent_framework import (
     WorkflowRunState,
     handler,
 )
-from agent_framework.azure import AzureOpenAIResponsesClient
-from azure.ai.projects.aio import AIProjectClient
+from agent_framework.azure import AzureAIProjectAgentProvider
 from azure.identity.aio import DefaultAzureCredential
-
-
-async def create_client_for_agent(
-    project_client: AIProjectClient
-) -> AzureOpenAIResponsesClient:
-    """Create an AzureOpenAIResponsesClient for orchestrated agents.
-
-    Args:
-        project_client: The AIProjectClient instance
-
-    Returns:
-        Configured AzureOpenAIResponsesClient for the agent
-    """
-    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-    if not model_deployment:
-        raise ValueError(
-            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
-
-    return AzureOpenAIResponsesClient(
-        project_client=project_client,
-        deployment_name=model_deployment,
-    )
 
 
 class ResearcherExecutor(Executor):
@@ -160,85 +137,67 @@ async def main() -> None:
         raise ValueError(
             "AZURE_AI_PROJECT_ENDPOINT environment variable is required")
 
-    async with DefaultAzureCredential() as credential:
-        async with AIProjectClient(
-            endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
-            credential=credential
-        ) as project_client:
+    async with (
+        DefaultAzureCredential() as credential,
+        AzureAIProjectAgentProvider(
+            project_endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
+            credential=credential,
+        ) as provider,
+    ):
+        # Load pre-existing Foundry agents through the provider.
+        print("Loading agents from Microsoft Foundry via provider.get_agent()...")
+        researcher = await provider.get_agent(name="ResearcherAgentV2")
+        writer = await provider.get_agent(name="WriterAgentV2")
+        reviewer = await provider.get_agent(name="ReviewerAgentV2")
+        print("✓ All agents loaded successfully\n")
 
-            # Create clients for the three orchestrated agents
-            print("Loading agents from deployment...")
-            researcher_client = await create_client_for_agent(project_client)
-            writer_client = await create_client_for_agent(project_client)
-            reviewer_client = await create_client_for_agent(project_client)
-            print("✓ All agents loaded successfully\n")
+        # Create executors wrapping the agents
+        researcher_executor = ResearcherExecutor(researcher)
+        writer_executor = WriterExecutor(writer)
+        reviewer_executor = ReviewerExecutor(reviewer)
 
-            # Create agents using the Foundry clients (RC2 API: client= instead of chat_client=)
-            researcher = Agent(
-                name="Researcher",
-                description="Collects relevant information using web search",
-                client=researcher_client,
+        # Build the workflow using RC2 API
+        # start_executor is now a required constructor parameter
+        # add_edge takes executor instances directly (auto-registered)
+        workflow = (
+            WorkflowBuilder(
+                name="SequentialResearchWorkflow",
+                description="Research -> Write -> Review sequential workflow",
+                start_executor=researcher_executor,
             )
+            .add_edge(researcher_executor, writer_executor)
+            .add_edge(writer_executor, reviewer_executor)
+            .build()
+        )
 
-            writer = Agent(
-                name="Writer",
-                description="Creates well-structured content based on research",
-                client=writer_client,
-            )
+        task = "Research and write a comprehensive article about the impact of AI agents in software development. Include recent trends and real-world examples."
 
-            reviewer = Agent(
-                name="Reviewer",
-                description="Evaluates content quality and provides constructive feedback",
-                client=reviewer_client,
-            )
+        # Run the workflow with streaming (RC2 API: run(stream=True) instead of run_stream())
+        print("=" * 80)
+        print("Starting sequential workflow: ResearcherAgentV2 -> WriterAgentV2 -> ReviewerAgentV2")
+        print("=" * 80)
+        print(f"\nTASK: {task}\n")
 
-            # Create executors wrapping the agents
-            researcher_executor = ResearcherExecutor(researcher)
-            writer_executor = WriterExecutor(writer)
-            reviewer_executor = ReviewerExecutor(reviewer)
+        async for event in workflow.run(Message(role="user", text=task), stream=True):
+            # RC2 API: check event.type instead of isinstance()
+            if event.type == "status" and event.state == WorkflowRunState.IDLE:
+                print("\n" + "=" * 80)
+                print("✓ Workflow completed successfully")
+                print("=" * 80)
+            elif event.type == "output":
+                print("\n" + "=" * 80)
+                print("FINAL CONVERSATION")
+                print("=" * 80)
+                messages = event.data
+                for i, msg in enumerate(messages, start=1):
+                    # RC2: role is a string, not an enum
+                    role = msg.role.value if hasattr(msg.role, 'value') else str(msg.role)
+                    name = msg.author_name or ("assistant" if role == "assistant" else "user")
+                    print(f"\n{'-' * 80}\n{i:02d} [{name}]")
+                    print(msg.text)
 
-            # Build the workflow using RC2 API
-            # start_executor is now a required constructor parameter
-            # add_edge takes executor instances directly (auto-registered)
-            workflow = (
-                WorkflowBuilder(
-                    name="SequentialResearchWorkflow",
-                    description="Research -> Write -> Review sequential workflow",
-                    start_executor=researcher_executor,
-                )
-                .add_edge(researcher_executor, writer_executor)
-                .add_edge(writer_executor, reviewer_executor)
-                .build()
-            )
-
-            task = "Research and write a comprehensive article about the impact of AI agents in software development. Include recent trends and real-world examples."
-
-            # Run the workflow with streaming (RC2 API: run(stream=True) instead of run_stream())
-            print("=" * 80)
-            print("Starting sequential workflow: ResearcherAgentV2 -> WriterAgentV2 -> ReviewerAgentV2")
-            print("=" * 80)
-            print(f"\nTASK: {task}\n")
-
-            async for event in workflow.run(Message(role="user", text=task), stream=True):
-                # RC2 API: check event.type instead of isinstance()
-                if event.type == "status" and event.state == WorkflowRunState.IDLE:
-                    print("\n" + "=" * 80)
-                    print("✓ Workflow completed successfully")
-                    print("=" * 80)
-                elif event.type == "output":
-                    print("\n" + "=" * 80)
-                    print("FINAL CONVERSATION")
-                    print("=" * 80)
-                    messages = event.data
-                    for i, msg in enumerate(messages, start=1):
-                        # RC2: role is a string, not an enum
-                        role = msg.role.value if hasattr(msg.role, 'value') else str(msg.role)
-                        name = msg.author_name or ("assistant" if role == "assistant" else "user")
-                        print(f"\n{'-' * 80}\n{i:02d} [{name}]")
-                        print(msg.text)
-
-            # Allow time for async cleanup
-            await asyncio.sleep(1.0)
+        # Allow time for async cleanup
+        await asyncio.sleep(1.0)
 
 
 if __name__ == "__main__":

@@ -21,60 +21,29 @@ from typing import cast
 from agent_framework import (
     Agent,
     Message,
-    WorkflowRunState,
 )
 from agent_framework_orchestrations import GroupChatBuilder
-from agent_framework.azure import AzureOpenAIResponsesClient
+from agent_framework.azure import AzureAIProjectAgentProvider
 from agent_framework.observability import configure_otel_providers
 from azure.ai.projects.aio import AIProjectClient
+from azure.core.exceptions import ResourceNotFoundError
 from azure.identity.aio import DefaultAzureCredential
 from azure.ai.agentserver.agentframework import from_agent_framework
 
-async def create_client_for_agent(
-    project_client: AIProjectClient
-) -> AzureOpenAIResponsesClient:
-    """Create an AzureOpenAIResponsesClient for orchestrated agents.
 
-    Args:
-        project_client: The AIProjectClient instance
+def disable_runtime_tool_overrides(agent: Agent) -> None:
+    """Remove runtime tool overrides to avoid serialization issues in tracing.
 
-    Returns:
-        Configured AzureOpenAIResponsesClient for the agent
+    Foundry-managed tools (for example Bing grounding configured on the remote
+    agent definition) are still used by the service. This only removes local
+    runtime tool payloads that Agent Framework observability tries to serialize.
     """
-    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-    if not model_deployment:
-        raise ValueError(
-            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
-
-    return AzureOpenAIResponsesClient(
-        project_client=project_client,
-        deployment_name=model_deployment,
-    )
-
-
-async def create_client_for_coordinator(
-    project_client: AIProjectClient
-) -> AzureOpenAIResponsesClient:
-    """Create an AzureOpenAIResponsesClient for the coordinator agent.
-
-    Args:
-        project_client: The AIProjectClient instance
-
-    Returns:
-        Configured AzureOpenAIResponsesClient for the coordinator
-    """
-    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-    if not model_deployment:
-        raise ValueError(
-            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
-
-    return AzureOpenAIResponsesClient(
-        project_client=project_client,
-        deployment_name=model_deployment,
-    )
+    if hasattr(agent, "default_options") and isinstance(agent.default_options, dict):
+        agent.default_options.pop("tools", None)
 
 
 async def main() -> None:
+
     # Set up OpenTelemetry tracing for Agent Framework and AI Toolkit.
     ai_toolkit_port = int(os.environ.get("AI_TOOLKIT_OTLP_GRPC_PORT", "4319"))
     os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"http://localhost:{ai_toolkit_port}")
@@ -88,23 +57,37 @@ async def main() -> None:
         raise ValueError(
             "AZURE_AI_PROJECT_ENDPOINT environment variable is required")
 
-    async with DefaultAzureCredential() as credential:
-        async with AIProjectClient(
+    async with (
+        DefaultAzureCredential() as credential,
+        AIProjectClient(
             endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
             credential=credential
-        ) as project_client:
+        ) as project_client,
+        AzureAIProjectAgentProvider(project_client=project_client) as provider,
+    ):
 
-            # Create clients for the three orchestrated agents
-            print("Loading agents from deployment...")
-            researcher_client = await create_client_for_agent(project_client)
-            writer_client = await create_client_for_agent(project_client)
-            reviewer_client = await create_client_for_agent(project_client)
-            coordinator_client = await create_client_for_coordinator(project_client)
-            print("✓ All agents loaded successfully\n")
+        print("Loading agents from Microsoft Foundry via provider.get_agent()...")
+        researcher = await provider.get_agent(name="ResearcherAgentV2")
+        writer = await provider.get_agent(name="WriterAgentV2")
+        reviewer = await provider.get_agent(name="ReviewerAgentV2")
 
-            # Create coordinator agent (RC2 API: client= instead of chat_client=)
-            coordinator = Agent(
-                name="Coordinator",
+        disable_runtime_tool_overrides(researcher)
+        disable_runtime_tool_overrides(writer)
+        disable_runtime_tool_overrides(reviewer)
+
+        coordinator_name = "CoordinatorAgentV2"
+        try:
+            coordinator = await provider.get_agent(name=coordinator_name)
+            print(f"✓ Reusing coordinator '{coordinator_name}'")
+        except ResourceNotFoundError:
+            model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+            if not model_deployment:
+                raise ValueError(
+                    "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
+
+            coordinator = await provider.create_agent(
+                name=coordinator_name,
+                model=model_deployment,
                 description="Coordinates multi-agent collaboration by selecting speakers",
                 instructions="""
                 You coordinate a team conversation to solve the user's task.
@@ -119,41 +102,27 @@ async def main() -> None:
                 - Only finish after all three have contributed meaningfully
                 - Allow for multiple rounds if the task requires it
                 """,
-                client=coordinator_client,
             )
+            print(f"✓ Created coordinator '{coordinator_name}'")
 
-            researcher = Agent(
-                name="ResearcherV2",
-                description="Collects relevant information using web search",
-                client=researcher_client,
-            )
+        disable_runtime_tool_overrides(coordinator)
 
-            writer = Agent(
-                name="WriterV2",
-                description="Creates well-structured content based on research",
-                client=writer_client,
-            )
+        print("✓ All agents loaded successfully\n")
 
-            reviewer = Agent(
-                name="ReviewerV2",
-                description="Evaluates content quality and provides constructive feedback",
-                client=reviewer_client,
-            )
+        # Build workflow using RC2 API
+        # Constructor params instead of fluent builder methods
+        def termination_check(messages: list[Message]) -> bool:
+            return sum(1 for msg in messages if str(msg.role) == "assistant") >= 6
 
-            # Build workflow using RC2 API
-            # Constructor params instead of fluent builder methods
-            def termination_check(messages: list[Message]) -> bool:
-                return sum(1 for msg in messages if str(msg.role) == "assistant") >= 6
+        workflow = GroupChatBuilder(
+            participants=[researcher, writer, reviewer],
+            orchestrator_agent=coordinator,
+            termination_condition=termination_check,
+        ).build()
 
-            workflow = GroupChatBuilder(
-                participants=[researcher, writer, reviewer],
-                orchestrator_agent=coordinator,
-                termination_condition=termination_check,
-            ).build()
-
-            # make the workflow an agent and ready to be hosted
-            agentwf = workflow.as_agent()
-            await from_agent_framework(agentwf).run_async()
+        # make the workflow an agent and ready to be hosted
+        agentwf = workflow.as_agent()
+        await from_agent_framework(agentwf).run_async()
 
 if __name__ == "__main__":
     asyncio.run(main())

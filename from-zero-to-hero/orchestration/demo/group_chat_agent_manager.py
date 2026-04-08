@@ -21,56 +21,12 @@ from typing import cast
 from agent_framework import (
     Agent,
     Message,
-    WorkflowRunState,
 )
 from agent_framework_orchestrations import GroupChatBuilder
-from agent_framework.azure import AzureOpenAIResponsesClient
+from agent_framework.azure import AzureAIProjectAgentProvider
 from azure.ai.projects.aio import AIProjectClient
+from azure.core.exceptions import ResourceNotFoundError
 from azure.identity.aio import DefaultAzureCredential
-
-
-async def create_client_for_agent(
-    project_client: AIProjectClient
-) -> AzureOpenAIResponsesClient:
-    """Create an AzureOpenAIResponsesClient for orchestrated agents.
-
-    Args:
-        project_client: The AIProjectClient instance
-
-    Returns:
-        Configured AzureOpenAIResponsesClient for the agent
-    """
-    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-    if not model_deployment:
-        raise ValueError(
-            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
-
-    return AzureOpenAIResponsesClient(
-        project_client=project_client,
-        deployment_name=model_deployment,
-    )
-
-
-async def create_client_for_coordinator(
-    project_client: AIProjectClient
-) -> AzureOpenAIResponsesClient:
-    """Create an AzureOpenAIResponsesClient for the coordinator agent.
-
-    Args:
-        project_client: The AIProjectClient instance
-
-    Returns:
-        Configured AzureOpenAIResponsesClient for the coordinator
-    """
-    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-    if not model_deployment:
-        raise ValueError(
-            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
-
-    return AzureOpenAIResponsesClient(
-        project_client=project_client,
-        deployment_name=model_deployment,
-    )
 
 
 async def main() -> None:
@@ -79,23 +35,33 @@ async def main() -> None:
         raise ValueError(
             "AZURE_AI_PROJECT_ENDPOINT environment variable is required")
 
-    async with DefaultAzureCredential() as credential:
-        async with AIProjectClient(
+    async with (
+        DefaultAzureCredential() as credential,
+        AIProjectClient(
             endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
             credential=credential
-        ) as project_client:
+        ) as project_client,
+        AzureAIProjectAgentProvider(project_client=project_client) as provider,
+    ):
 
-            # Create clients for the three orchestrated agents
-            print("Loading agents from deployment...")
-            researcher_client = await create_client_for_agent(project_client)
-            writer_client = await create_client_for_agent(project_client)
-            reviewer_client = await create_client_for_agent(project_client)
-            coordinator_client = await create_client_for_coordinator(project_client)
-            print("✓ All agents loaded successfully\n")
+        print("Loading agents from Microsoft Foundry via provider.get_agent()...")
+        researcher = await provider.get_agent(name="ResearcherAgentV2")
+        writer = await provider.get_agent(name="WriterAgentV2")
+        reviewer = await provider.get_agent(name="ReviewerAgentV2")
 
-            # Create coordinator agent (RC2 API: client= instead of chat_client=)
-            coordinator = Agent(
-                name="Coordinator",
+        coordinator_name = "CoordinatorAgentV2"
+        try:
+            coordinator = await provider.get_agent(name=coordinator_name)
+            print(f"✓ Reusing coordinator '{coordinator_name}'")
+        except ResourceNotFoundError:
+            model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+            if not model_deployment:
+                raise ValueError(
+                    "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
+
+            coordinator = await provider.create_agent(
+                name=coordinator_name,
+                model=model_deployment,
                 description="Coordinates multi-agent collaboration by selecting speakers",
                 instructions="""
                 You coordinate a team conversation to solve the user's task.
@@ -110,71 +76,55 @@ async def main() -> None:
                 - Only finish after all three have contributed meaningfully
                 - Allow for multiple rounds if the task requires it
                 """,
-                client=coordinator_client,
             )
+            print(f"✓ Created coordinator '{coordinator_name}'")
 
-            researcher = Agent(
-                name="ResearcherV2",
-                description="Collects relevant information using web search",
-                client=researcher_client,
-            )
+        print("✓ All agents loaded successfully\n")
 
-            writer = Agent(
-                name="WriterV2",
-                description="Creates well-structured content based on research",
-                client=writer_client,
-            )
+        # Build workflow using RC2 API
+        # Constructor params instead of fluent builder methods
+        def termination_check(messages: list[Message]) -> bool:
+            return sum(1 for msg in messages if str(msg.role) == "assistant") >= 6
 
-            reviewer = Agent(
-                name="ReviewerV2",
-                description="Evaluates content quality and provides constructive feedback",
-                client=reviewer_client,
-            )
+        workflow = GroupChatBuilder(
+            participants=[researcher, writer, reviewer],
+            orchestrator_agent=coordinator,
+            termination_condition=termination_check,
+        ).build()
 
-            # Build workflow using RC2 API
-            # Constructor params instead of fluent builder methods
-            def termination_check(messages: list[Message]) -> bool:
-                return sum(1 for msg in messages if str(msg.role) == "assistant") >= 6
+        task = "Research and write a comprehensive article about the impact of AI agents in software development. Include recent trends and real-world examples."
 
-            workflow = GroupChatBuilder(
-                participants=[researcher, writer, reviewer],
-                orchestrator_agent=coordinator,
-                termination_condition=termination_check,
-            ).build()
+        print("Starting Group Chat with Agent-Based Manager...\n")
+        print(f"TASK: {task}\n")
+        print("=" * 80)
 
-            task = "Research and write a comprehensive article about the impact of AI agents in software development. Include recent trends and real-world examples."
+        final_conversation: list[Message] = []
+        last_executor_id: str | None = None
 
-            print("Starting Group Chat with Agent-Based Manager...\n")
-            print(f"TASK: {task}\n")
+        # RC2 API: run(stream=True) instead of run_stream()
+        async for event in workflow.run(task, stream=True):
+            # RC2 API: check event.type instead of isinstance()
+            if event.type == "update":
+                eid = event.executor_id
+                if eid != last_executor_id:
+                    if last_executor_id is not None:
+                        print()
+                    print(f"{eid}:", end=" ", flush=True)
+                    last_executor_id = eid
+                print(event.data, end="", flush=True)
+            elif event.type == "output":
+                final_conversation = cast(list[Message], event.data)
+
+        if final_conversation and isinstance(final_conversation, list):
+            print("\n\n" + "=" * 80)
+            print("FINAL CONVERSATION")
             print("=" * 80)
-
-            final_conversation: list[Message] = []
-            last_executor_id: str | None = None
-
-            # RC2 API: run(stream=True) instead of run_stream()
-            async for event in workflow.run(task, stream=True):
-                # RC2 API: check event.type instead of isinstance()
-                if event.type == "update":
-                    eid = event.executor_id
-                    if eid != last_executor_id:
-                        if last_executor_id is not None:
-                            print()
-                        print(f"{eid}:", end=" ", flush=True)
-                        last_executor_id = eid
-                    print(event.data, end="", flush=True)
-                elif event.type == "output":
-                    final_conversation = cast(list[Message], event.data)
-
-            if final_conversation and isinstance(final_conversation, list):
-                print("\n\n" + "=" * 80)
-                print("FINAL CONVERSATION")
-                print("=" * 80)
-                for msg in final_conversation:
-                    author = getattr(msg, "author_name", "Unknown")
-                    text = getattr(msg, "text", str(msg))
-                    print(f"\n[{author}]")
-                    print(text)
-                    print("-" * 80)
+            for msg in final_conversation:
+                author = getattr(msg, "author_name", "Unknown")
+                text = getattr(msg, "text", str(msg))
+                print(f"\n[{author}]")
+                print(text)
+                print("-" * 80)
 
 
 if __name__ == "__main__":

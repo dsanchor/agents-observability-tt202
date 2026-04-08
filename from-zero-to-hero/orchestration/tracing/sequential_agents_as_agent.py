@@ -28,31 +28,15 @@ from agent_framework import (
     WorkflowRunState,
     handler,
 )
-from agent_framework.azure import AzureOpenAIResponsesClient
-from azure.ai.projects.aio import AIProjectClient
+from agent_framework.azure import AzureAIProjectAgentProvider
 from azure.identity.aio import DefaultAzureCredential
 from azure.ai.agentserver.agentframework import from_agent_framework
 
-async def create_client_for_agent(
-    project_client: AIProjectClient
-) -> AzureOpenAIResponsesClient:
-    """Create an AzureOpenAIResponsesClient for orchestrated agents.
 
-    Args:
-        project_client: The AIProjectClient instance
-
-    Returns:
-        Configured AzureOpenAIResponsesClient for the agent
-    """
-    model_deployment = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-    if not model_deployment:
-        raise ValueError(
-            "AZURE_AI_MODEL_DEPLOYMENT_NAME environment variable is required")
-
-    return AzureOpenAIResponsesClient(
-        project_client=project_client,
-        deployment_name=model_deployment,
-    )
+def disable_runtime_tool_overrides(agent: Agent) -> None:
+    """Remove runtime tool payloads that can break observability serialization."""
+    if hasattr(agent, "default_options") and isinstance(agent.default_options, dict):
+        agent.default_options.pop("tools", None)
 
 
 class ResearcherExecutor(Executor):
@@ -160,61 +144,47 @@ async def main() -> None:
         raise ValueError(
             "AZURE_AI_PROJECT_ENDPOINT environment variable is required")
 
-    async with DefaultAzureCredential() as credential:
-        async with AIProjectClient(
-            endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
-            credential=credential
-        ) as project_client:
+    async with (
+        DefaultAzureCredential() as credential,
+        AzureAIProjectAgentProvider(
+            project_endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
+            credential=credential,
+        ) as provider,
+    ):
+        # Load pre-existing Foundry agents through the provider.
+        print("Loading agents from Microsoft Foundry via provider.get_agent()...")
+        researcher = await provider.get_agent(name="ResearcherAgentV2")
+        writer = await provider.get_agent(name="WriterAgentV2")
+        reviewer = await provider.get_agent(name="ReviewerAgentV2")
 
-            # Create clients for the three orchestrated agents
-            print("Loading agents from deployment...")
-            researcher_client = await create_client_for_agent(project_client)
-            writer_client = await create_client_for_agent(project_client)
-            reviewer_client = await create_client_for_agent(project_client)
-            print("✓ All agents loaded successfully\n")
+        disable_runtime_tool_overrides(researcher)
+        disable_runtime_tool_overrides(writer)
+        disable_runtime_tool_overrides(reviewer)
 
-            # Create agents using the Foundry clients (RC2 API: client= instead of chat_client=)
-            researcher = Agent(
-                name="Researcher",
-                description="Collects relevant information using web search",
-                client=researcher_client,
+        print("✓ All agents loaded successfully\n")
+
+        # Create executors wrapping the agents
+        researcher_executor = ResearcherExecutor(researcher)
+        writer_executor = WriterExecutor(writer)
+        reviewer_executor = ReviewerExecutor(reviewer)
+
+        # Build the workflow using RC2 API
+        # start_executor is now a required constructor parameter
+        # add_edge takes executor instances directly (auto-registered)
+        workflow = (
+            WorkflowBuilder(
+                name="SequentialResearchWorkflow",
+                description="Research -> Write -> Review sequential workflow",
+                start_executor=researcher_executor,
             )
+            .add_edge(researcher_executor, writer_executor)
+            .add_edge(writer_executor, reviewer_executor)
+            .build()
+        )
 
-            writer = Agent(
-                name="Writer",
-                description="Creates well-structured content based on research",
-                client=writer_client,
-            )
-
-            reviewer = Agent(
-                name="Reviewer",
-                description="Evaluates content quality and provides constructive feedback",
-                client=reviewer_client,
-            )
-
-            # Create executors wrapping the agents
-            researcher_executor = ResearcherExecutor(researcher)
-            writer_executor = WriterExecutor(writer)
-            reviewer_executor = ReviewerExecutor(reviewer)
-
-            # Build the workflow using RC2 API
-            # start_executor is now a required constructor parameter
-            # add_edge takes executor instances directly (auto-registered)
-            workflow = (
-                WorkflowBuilder(
-                    name="SequentialResearchWorkflow",
-                    description="Research -> Write -> Review sequential workflow",
-                    start_executor=researcher_executor,
-                )
-                .add_edge(researcher_executor, writer_executor)
-                .add_edge(writer_executor, reviewer_executor)
-                .build()
-            )
-
-            # make the workflow an agent and ready to be hosted
-            agentwf = workflow.as_agent()
-            await from_agent_framework(agentwf).run_async()
-
+        # make the workflow an agent and ready to be hosted
+        agentwf = workflow.as_agent()
+        await from_agent_framework(agentwf).run_async()
 
 if __name__ == "__main__":
     asyncio.run(main())
